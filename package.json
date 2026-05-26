@@ -1,0 +1,24 @@
+{
+  "name": "sanctom-relations-app",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Sanctom Relations v0.2 — full-stack CRM application (5 role profiles: Pro + Investor + Member + Candidate + Employee). Backend service + React frontend. Target: sanctom-platform-shared-prod (relations.* schema).",
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "dev": "npm run dev --workspaces --if-present"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.5.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
