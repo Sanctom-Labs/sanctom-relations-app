@@ -4,3 +4,15 @@ coverage/
 *.env
 .env.*
 package-lock.json
+
+# Playwright E2E tests
+test-results/
+playwright-report/
+/blob-report
+/playwright/.cache/
+
+# IDE
+.DS_Store
+.vscode/
+.idea/
+*.swp
