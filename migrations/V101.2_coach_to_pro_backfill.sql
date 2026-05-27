@@ -1,6 +1,12 @@
 -- ===========================================================================
 -- V101.2 — Relations Pro Profile: backfill from v1.x coach_profile
 -- ===========================================================================
+-- DEFER: DO NOT APPLY in standard V101 ceremony.
+-- Disposition: Strata 2026-05-27 (Option B ratified per §5 of Strata→Hammer-C ping).
+-- Apply window: v1.x CRM data migration ceremony (Knox-attended, separate scope).
+-- Reason: coach_profile lives on sanctom-crm-prod (separate RDS instance); cross-DB
+--   migration is non-trivial. Gated on Petra-C / Knox scoping that migration window.
+-- ===========================================================================
 -- Spec: Relations-Pro-Functional-Spec-v0.2.md §11.1 Phase 3 (Petra-C, 2026-05-26 PM)
 -- Ratified: Knox 2026-05-26 PM
 -- Author: Hammer-C

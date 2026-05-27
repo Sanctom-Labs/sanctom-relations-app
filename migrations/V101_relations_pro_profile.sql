@@ -8,10 +8,10 @@
 --
 -- DEPENDENCY PRE-CONDITIONS (must exist on sanctom-platform-shared-prod before applying):
 --   • platform.tenant(id)          — TN bootstrap (V001_tenant.sql, PR #38 at b87299b) ✅
---   • ct.person(id)                — CT Contacts (PR #20 at ba8cce6) ✅ merged
---                                    NOTE: spec writes `contacts.person`; actual schema on
---                                    shared-prod is `ct.person` per §3 naming convention.
---                                    FK below uses `ct.person` — confirm with CT migrations.
+--   • contacts.person(id)          — CT Contacts (PR #20 at ba8cce6) ✅ merged
+--                                    CONFIRMED by Strata 2026-05-27: canonical schema is
+--                                    `contacts` (not `ct`). `ct` does not exist on shared-prod.
+--                                    FK below corrected to `contacts.person`. (F-20-class drift)
 --   • platform.entity(id)          — F-EN Entity Arch v0.1; NOT yet deployed on shared-prod
 --                                    (gated on Entity platform service spec). FK is written
 --                                    per spec; will fail until F-EN lands. See §STRATA-NOTE.
@@ -21,14 +21,14 @@
 --   • relations.activity_type ENUM — existing v1.x enum (from sanctom-crm-prod schema);
 --                                    must be migrated/created on shared-prod before §9.4 applies
 --
--- §STRATA-NOTE — 3 FKs need disposition before apply:
---   1. ct.person vs contacts.person: verify CT PR #20 schema prefix (ct vs contacts)
---   2. platform.entity: F-EN Entity service not yet on shared-prod; either defer V101
---      until F-EN lands OR apply with FK commented out + add FK via ALTER TABLE later
---   3. auth.users: cross-instance FK (AU service on sanctom-identity-prod, NOT shared-prod);
---      Postgres cannot enforce cross-DB FKs. FK to auth.users removed from DDL below;
---      enforce created_by_user_id / updated_by_user_id at application layer instead.
---      Ping Hammer-C inbox if disposition changes.
+-- §STRATA-NOTE — FK dispositions (all closed 2026-05-27, Strata ping):
+--   1. RESOLVED: canonical CT schema is `contacts` (not `ct`). FK corrected to contacts.person.
+--   2. RESOLVED: F-EN gated — FK commented out, owner_entity_id UUID NOT NULL, app-layer only.
+--      TODO ALTER TABLE migration queued at F-EN ship time.
+--   3. RESOLVED: cross-instance FK impossible. created_by/updated_by UUID NOT NULL, app-layer only.
+-- Drift 8a: GUC name corrected to platform.current_tenant_id() across all 3 RLS policies.
+-- Drift 8b/8c: platform.user_can_see_entity_data() + platform.user_has_entity_role() stubs
+--   will ship as V002_entity_helpers.sql (Strata stewardship; Option C ratified by Hammer-C).
 --
 -- SEQUENCING NOTE: §11.1 lists pro_profile before onboarding_template, but
 -- pro_profile carries FK to onboarding_template — onboarding_template is
@@ -122,13 +122,15 @@ CREATE TABLE relations.pro_profile (
   id                       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
   -- Person + tenancy context
-  -- FK uses ct.person per sanctom-platform-shared-prod §3 naming convention (PR #20 CT service).
-  -- Spec writes contacts.person — confirm schema prefix matches CT PR #20 migration output.
-  person_id                UUID NOT NULL REFERENCES ct.person(id) ON DELETE CASCADE,
+  -- Canonical CT schema is `contacts` (confirmed by Strata 2026-05-27 against
+  -- services/contacts/migrations/003_create_person_table.sql:10). Spec drift corrected.
+  person_id                UUID NOT NULL REFERENCES contacts.person(id) ON DELETE CASCADE,
   tenant_id                UUID NOT NULL REFERENCES platform.tenant(id),
-  -- platform.entity FK requires F-EN Entity service on shared-prod (not yet deployed).
-  -- Applying with FK in place will fail until F-EN lands. Strata to confirm timing.
-  owner_entity_id          UUID NOT NULL REFERENCES platform.entity(id),
+  -- FK-2 DISPOSITION (Strata 2026-05-27, Option B ratified): F-EN Entity service not yet on
+  -- shared-prod; FK commented out + apply now. Add FK via ALTER TABLE migration once F-EN lands.
+  -- TODO: ALTER TABLE relations.pro_profile ADD CONSTRAINT pro_profile_owner_entity_fk
+  --       FOREIGN KEY (owner_entity_id) REFERENCES platform.entity(id);  -- at F-EN ship time
+  owner_entity_id          UUID NOT NULL, -- spec: REFERENCES platform.entity(id); F-EN gated: app-layer only
 
   -- Discriminator + refinement fields
   pro_type                 relations.pro_type_enum NOT NULL,
@@ -204,7 +206,7 @@ ALTER TABLE relations.pro_profile ENABLE ROW LEVEL SECURITY;
 CREATE POLICY pro_profile_select_policy ON relations.pro_profile
   FOR SELECT
   USING (
-    tenant_id = current_setting('app.current_tenant_id')::uuid
+    tenant_id = platform.current_tenant_id()  -- canonical fn (V001_tenant.sql); was: current_setting('app.current_tenant_id')::uuid (wrong GUC name + raw call)
     AND owner_entity_id = current_setting('app.current_entity_id')::uuid
     AND platform.user_can_see_entity_data(
       owner_entity_id,
@@ -216,7 +218,7 @@ CREATE POLICY pro_profile_select_policy ON relations.pro_profile
 CREATE POLICY pro_profile_modify_policy ON relations.pro_profile
   FOR ALL
   USING (
-    tenant_id = current_setting('app.current_tenant_id')::uuid
+    tenant_id = platform.current_tenant_id()  -- canonical fn (V001_tenant.sql); was: current_setting('app.current_tenant_id')::uuid (wrong GUC name + raw call)
     AND owner_entity_id = current_setting('app.current_entity_id')::uuid
     AND platform.user_has_entity_role(
       owner_entity_id,
@@ -229,7 +231,7 @@ CREATE POLICY pro_profile_modify_policy ON relations.pro_profile
 CREATE POLICY pro_profile_staff_select_policy ON relations.pro_profile
   FOR SELECT
   USING (
-    tenant_id = current_setting('app.current_tenant_id')::uuid
+    tenant_id = platform.current_tenant_id()  -- canonical fn (V001_tenant.sql); was: current_setting('app.current_tenant_id')::uuid (wrong GUC name + raw call)
     AND current_setting('app.identity_class', true) = 'staff'
     AND tenant_id = (SELECT id FROM platform.tenant WHERE slug = 'sanctom-labs')
   );
