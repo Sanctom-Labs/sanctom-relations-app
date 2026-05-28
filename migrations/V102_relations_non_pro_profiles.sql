@@ -288,9 +288,9 @@ CREATE INDEX saved_filter_pinned_idx ON relations.saved_filter (user_id, display
 
 ALTER TABLE relations.saved_filter ENABLE ROW LEVEL SECURITY;
 
--- Per-user isolation: user sees only their own saved filters
+-- Per-user isolation: user sees only their own saved filters within their current tenant
 CREATE POLICY saved_filter_owner_only ON relations.saved_filter
-  FOR ALL USING (user_id = current_setting('app.current_user_id')::uuid);
+  FOR ALL USING (user_id = current_setting('app.current_user_id')::uuid AND tenant_id = platform.current_tenant_id());
 
 -- ---------------------------------------------------------------------------
 -- §7.7 — Extend relations.activity with role_context column

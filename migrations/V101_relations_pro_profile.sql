@@ -227,7 +227,7 @@ CREATE POLICY pro_profile_modify_policy ON relations.pro_profile
     )
   );
 
--- SELECT override: Sanctom-Staff identity_class sees ALL rows across all tenants
+-- SELECT override: Sanctom-Staff identity_class in the sanctom-labs tenant context sees all pro_profile rows for that tenant (not global cross-tenant bypass)
 CREATE POLICY pro_profile_staff_select_policy ON relations.pro_profile
   FOR SELECT
   USING (
