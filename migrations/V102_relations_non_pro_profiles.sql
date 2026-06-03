@@ -7,16 +7,16 @@
 -- Depends on: V101_relations_pro_profile.sql (relations schema + platform.fn_set_updated_at)
 -- Target: sanctom-platform-shared-prod (relations.* schema)
 --
--- DEPENDENCY PRE-CONDITIONS (same as V101 — see V101 §STRATA-NOTE for disposition):
---   • ct.person(id)          — CT Contacts service on shared-prod (PR #20 at ba8cce6)
+-- DEPENDENCY PRE-CONDITIONS:
+--   • contacts.person(id)    — CT Contacts on shared-prod ✅ (was ct.person; corrected 2026-06-03)
 --   • platform.tenant(id)    — TN bootstrap V001_tenant.sql ✅
---   • platform.entity(id)    — F-EN Entity service (not yet on shared-prod; FK is present)
---   • platform.fn_set_updated_at() — TN bootstrap V001_tenant.sql ✅
---   • relations.activity     — existing v1.x activity table (rebrand of crm.activity)
+--   • platform.entity(id)    — F-EN gated; FK commented out (§STRATA-NOTE same as V101)
+--   • platform.fn_set_updated_at() — created by Strata during Phase 1 apply 2026-06-03 ✅
+--   • relations.activity     — Phase 1 base table (see V102.1 note re: cross-DB precondition)
 --
--- FK POLICY (same as V101):
---   • ct.person — used in place of spec's contacts.person
---   • platform.entity — present per spec; apply after F-EN lands (or Strata disposition)
+-- FK POLICY:
+--   • contacts.person — confirmed live on shared-prod (ct schema does NOT exist)
+--   • platform.entity — FK commented out; same §STRATA-NOTE disposition as V101
 --   • auth.user (user_id / created_by / updated_by) — cross-instance; FK REMOVED;
 --     app-layer enforcement only (comments retained for spec-fidelity)
 --
@@ -66,11 +66,13 @@ CREATE TYPE relations.role_context_enum AS ENUM (
 CREATE TABLE relations.investor_profile (
   id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
-  -- Spec: REFERENCES contacts.person(id) — actual schema on shared-prod: ct.person
-  person_id            UUID NOT NULL REFERENCES ct.person(id) ON DELETE CASCADE,
+  -- STRATA-NOTE (2026-06-03): `contacts.person` confirmed live on shared-prod.
+  --   Was `ct.person` (wrong schema) — corrected to `contacts.person`.
+  person_id            UUID NOT NULL REFERENCES contacts.person(id) ON DELETE CASCADE,
   tenant_id            UUID NOT NULL REFERENCES platform.tenant(id),
-  -- Spec: REFERENCES platform.entity(id) — F-EN gate; see §STRATA-NOTE in V101
-  owner_entity_id      UUID NOT NULL REFERENCES platform.entity(id),
+  -- STRATA-NOTE: platform.entity not present on shared-prod (entity schema only);
+  --   same disposition as V101 — FK commented out; app-layer enforcement only.
+  owner_entity_id      UUID NOT NULL, -- spec: REFERENCES platform.entity(id); gated on F-EN
 
   stage                relations.investor_stage_enum NOT NULL DEFAULT 'prospect',
   fit_score            relations.investor_fit_score_enum,
@@ -124,11 +126,11 @@ CREATE POLICY investor_profile_staff_only ON relations.investor_profile
 CREATE TABLE relations.member_profile (
   id                          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
-  -- Spec: REFERENCES contacts.person(id) — actual schema on shared-prod: ct.person
-  person_id                   UUID NOT NULL REFERENCES ct.person(id) ON DELETE CASCADE,
+  -- STRATA-NOTE: contacts.person confirmed on shared-prod (was ct.person — corrected).
+  person_id                   UUID NOT NULL REFERENCES contacts.person(id) ON DELETE CASCADE,
   tenant_id                   UUID NOT NULL REFERENCES platform.tenant(id),
-  -- Spec: REFERENCES platform.entity(id) — F-EN gate; see §STRATA-NOTE in V101
-  owner_entity_id             UUID NOT NULL REFERENCES platform.entity(id),
+  -- STRATA-NOTE: platform.entity FK commented out — same disposition as V101.
+  owner_entity_id             UUID NOT NULL, -- spec: REFERENCES platform.entity(id); gated on F-EN
 
   -- Lifecycle & onboarding
   signup_date                 TIMESTAMPTZ,
@@ -150,8 +152,8 @@ CREATE TABLE relations.member_profile (
   last_activity_date          TIMESTAMPTZ,
 
   -- Coach cross-link (Pro identity-class coach matched to this member)
-  -- Spec: REFERENCES contacts.person(id) — actual schema: ct.person
-  coach_match_id              UUID REFERENCES ct.person(id),
+  -- STRATA-NOTE: contacts.person confirmed on shared-prod.
+  coach_match_id              UUID REFERENCES contacts.person(id),
 
   current_stage               relations.member_stage_enum NOT NULL DEFAULT 'prospect',
   useful_links                JSONB NOT NULL DEFAULT '[]'::jsonb,
@@ -195,11 +197,11 @@ CREATE POLICY member_profile_staff_only ON relations.member_profile
 
 CREATE TABLE relations.candidate_profile (
   id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  -- Spec: REFERENCES contacts.person(id) — actual schema on shared-prod: ct.person
-  person_id            UUID NOT NULL REFERENCES ct.person(id) ON DELETE CASCADE,
+  -- STRATA-NOTE: contacts.person confirmed on shared-prod.
+  person_id            UUID NOT NULL REFERENCES contacts.person(id) ON DELETE CASCADE,
   tenant_id            UUID NOT NULL REFERENCES platform.tenant(id),
-  -- Spec: REFERENCES platform.entity(id) — F-EN gate; see §STRATA-NOTE in V101
-  owner_entity_id      UUID NOT NULL REFERENCES platform.entity(id),
+  -- STRATA-NOTE: platform.entity FK commented out — same disposition as V101.
+  owner_entity_id      UUID NOT NULL, -- spec: REFERENCES platform.entity(id); gated on F-EN
   current_stage        relations.candidate_stage_enum NOT NULL DEFAULT 'applied',
   role_applied_for     TEXT,
   application_source   TEXT,
@@ -232,11 +234,11 @@ CREATE POLICY candidate_profile_staff_only ON relations.candidate_profile
 
 CREATE TABLE relations.employee_profile (
   id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  -- Spec: REFERENCES contacts.person(id) — actual schema on shared-prod: ct.person
-  person_id            UUID NOT NULL REFERENCES ct.person(id) ON DELETE CASCADE,
+  -- STRATA-NOTE: contacts.person confirmed on shared-prod.
+  person_id            UUID NOT NULL REFERENCES contacts.person(id) ON DELETE CASCADE,
   tenant_id            UUID NOT NULL REFERENCES platform.tenant(id),
-  -- Spec: REFERENCES platform.entity(id) — F-EN gate; see §STRATA-NOTE in V101
-  owner_entity_id      UUID NOT NULL REFERENCES platform.entity(id),
+  -- STRATA-NOTE: platform.entity FK commented out — same disposition as V101.
+  owner_entity_id      UUID NOT NULL, -- spec: REFERENCES platform.entity(id); gated on F-EN
   deel_employee_id     TEXT,
   employment_type      TEXT,
   start_date           DATE,

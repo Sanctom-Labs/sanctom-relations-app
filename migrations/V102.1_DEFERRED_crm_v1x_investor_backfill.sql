@@ -1,6 +1,19 @@
 -- ===========================================================================
--- V102.1 — Relations non-Pro profiles: backfill from CRM v1.x investor records
+-- V102.1_DEFERRED — Relations non-Pro profiles: backfill from CRM v1.x investor records
 -- ===========================================================================
+-- DEFERRED — renamed from V102.1 on 2026-06-03 (Hammer-C, per Strata pre-flight).
+--
+-- TWO reasons this cannot run in the standard ordered apply:
+--   1. CROSS-DB: reads from crm.investor_profile on sanctom-crm-prod (separate RDS instance);
+--      requires pg_dump+load into a temp table on shared-prod, OR pg_dblink from shared-prod
+--      to crm-prod. Neither is part of Strata's standard apply run. See §NOTE below.
+--   2. PRECONDITION: reads from relations.activity — this table was supposed to exist as
+--      a Phase 1 base (rebrand of crm.activity) but has not been created on shared-prod yet.
+--      This is a separate Phase 1 migration not yet authored.
+--
+-- Strata's apply runner skips _DEFERRED files (same pattern as V101.2_DEFERRED).
+-- Strata confirmed this at pre-flight 2026-06-03.
+-- ---------------------------------------------------------------------------
 -- Spec: Relations-Functional-Spec-v0.2.md §8.1 Phase 2 (Petra-C, 2026-05-26 PM)
 -- Ratified: Knox 2026-05-26 PM
 -- Author: Hammer-C
