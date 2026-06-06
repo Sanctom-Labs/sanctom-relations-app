@@ -57,9 +57,10 @@
 --   crm_investor.rec_timing          → investor_profile.rec_timing
 --   crm_investor.knox_notes          → investor_profile.knox_notes
 --   crm_investor.next_action         → investor_profile.next_action
---   crm_investor.useful_links        → investor_profile.useful_links
---   crm_investor.created_at          → investor_profile.created_at
---   crm_investor.created_by_user_id  → investor_profile.created_by_user_id
+--   crm_investor.useful_links        → investor_profile.useful_links (already JSONB)
+--   (SUPERSEDED by the STRATA LIVE-SOURCE DIFF block below: the real source is
+--    public.investor_profile and has NO created_at / created_by_user_id / tenant_id /
+--    owner_entity_id — those dest columns are supplied as constants, not copied.)
 --
 -- STAGE MAPPING (CRM v1.x stage TEXT → investor_stage_enum):
 --   CRM v1.x stage labels are stored as text; CASE mapping below handles common
@@ -87,11 +88,40 @@
 --   Strata to confirm apply mechanism before this migration runs in prod.
 -- ===========================================================================
 
+-- ===========================================================================
+-- STRATA LIVE-SOURCE DIFF (2026-06-06) — applied to the SELECT below:
+--   • Source is public.investor_profile on sanctom-crm-prod (260 rows) — NOT
+--     crm.investor_profile / crm_investor. FROM clause corrected.
+--   • Source has NO tenant_id, owner_entity_id, created_at, or created_by/updated_by.
+--     The 4 NOT-NULL dest columns are SUPPLIED as constants from the v_* vars below
+--     (created_by = updated_by = one actor). created_at defaults now().
+--   • check_size_min/max: source numeric → dest bigint (::bigint cast added).
+--   • investment_focus / portfolio_cos: source is free TEXT → dest TEXT[]. Wrapped
+--     as a single-element array (NON-LOSSY default). ⚠️ If a delimiter split is
+--     wanted, Petra-C confirms the delimiter and we swap to string_to_array().
+--   • useful_links: source is already JSONB — passes through.
+--   • Dropped 5 source-only cols (first_outbound_at, last_inbound_at,
+--     last_stage_transition_at, stalled, stalled_since) — not in dest, not selected.
+--
+-- ⛔ BEFORE RUNNING: set the 3 uuids below. They are a Petra-C/Knox product decision
+--    (Sanctom tenant + Knox's owning entity + Knox's user). The guard RAISEs if unset,
+--    so this migration CANNOT insert NULL-scoped or unattributed rows by accident.
+-- ===========================================================================
+
 DO $$
 DECLARE
   v_backfilled_count  BIGINT;
   v_activity_updated  BIGINT;
+  -- ⛔ FILL these 3 before running (pending Petra-C/Knox; Strata can pull candidate
+  --    ids from identity/entity once decided). owner_entity_id is also the ON CONFLICT key.
+  v_tenant_id         UUID := NULL;  -- Sanctom tenant uuid
+  v_owner_entity_id   UUID := NULL;  -- Knox's owning entity uuid
+  v_actor_user_id     UUID := NULL;  -- Knox's user uuid (created_by_user_id = updated_by_user_id)
 BEGIN
+
+  IF v_tenant_id IS NULL OR v_owner_entity_id IS NULL OR v_actor_user_id IS NULL THEN
+    RAISE EXCEPTION 'V102.1: set v_tenant_id / v_owner_entity_id / v_actor_user_id before running (pending Petra-C/Knox).';
+  END IF;
 
   -- -------------------------------------------------------------------------
   -- Step 1: Backfill investor_profile from CRM v1.x
@@ -133,8 +163,8 @@ BEGIN
   )
   SELECT
     crm_inv.person_id,
-    crm_inv.tenant_id,
-    crm_inv.owner_entity_id,
+    v_tenant_id,        -- supplied (source has no tenant_id)
+    v_owner_entity_id,  -- supplied (source has no owner_entity_id; also ON CONFLICT key)
 
     -- Stage: map v1.x text values to investor_stage_enum
     -- Extend this CASE as needed after reviewing: SELECT DISTINCT stage FROM crm.investor_profile
@@ -173,12 +203,17 @@ BEGIN
       ELSE               NULL
     END::relations.investor_priority_enum,
 
-    crm_inv.check_size_min_usd,
-    crm_inv.check_size_max_usd,
+    crm_inv.check_size_min_usd::bigint,   -- source numeric → dest bigint
+    crm_inv.check_size_max_usd::bigint,
 
-    COALESCE(crm_inv.investment_focus,  ARRAY[]::TEXT[]),
+    -- Source investment_focus / portfolio_cos are free TEXT; dest is TEXT[].
+    -- Non-lossy default: wrap the whole value as a single-element array. Swap to
+    -- string_to_array(crm_inv.<col>, '<delim>') if Petra-C confirms a delimiter.
+    CASE WHEN crm_inv.investment_focus IS NULL OR btrim(crm_inv.investment_focus) = ''
+         THEN ARRAY[]::TEXT[] ELSE ARRAY[crm_inv.investment_focus] END,
     crm_inv.stage_preference,
-    COALESCE(crm_inv.portfolio_cos,     ARRAY[]::TEXT[]),
+    CASE WHEN crm_inv.portfolio_cos IS NULL OR btrim(crm_inv.portfolio_cos) = ''
+         THEN ARRAY[]::TEXT[] ELSE ARRAY[crm_inv.portfolio_cos] END,
 
     -- Prefix fit_rationale for traceability (migration source tag)
     CASE
@@ -201,12 +236,12 @@ BEGIN
       ELSE crm_inv.useful_links
     END,
 
-    crm_inv.created_at,
+    now(),              -- source has no created_at
     now(),
-    crm_inv.created_by_user_id,
-    crm_inv.created_by_user_id
+    v_actor_user_id,    -- supplied (source has no created_by_user_id)
+    v_actor_user_id     -- supplied (updated_by_user_id = same actor)
 
-  FROM crm.investor_profile crm_inv  -- adjust schema prefix if needed
+  FROM public.investor_profile crm_inv  -- Strata-confirmed source (sanctom-crm-prod, 260 rows)
   ON CONFLICT (person_id, owner_entity_id) DO NOTHING;
 
   GET DIAGNOSTICS v_backfilled_count = ROW_COUNT;
