@@ -3,13 +3,18 @@
 -- ===========================================================================
 -- DEFERRED — renamed from V102.1 on 2026-06-03 (Hammer-C, per Strata pre-flight).
 --
--- TWO reasons this cannot run in the standard ordered apply:
---   1. CROSS-DB: reads from crm.investor_profile on sanctom-crm-prod (separate RDS instance);
---      requires pg_dump+load into a temp table on shared-prod, OR pg_dblink from shared-prod
---      to crm-prod. Neither is part of Strata's standard apply run. See §NOTE below.
---   2. PRECONDITION: reads from relations.activity — this table was supposed to exist as
---      a Phase 1 base (rebrand of crm.activity) but has not been created on shared-prod yet.
---      This is a separate Phase 1 migration not yet authored.
+-- Why this is still a _DEFERRED (out-of-band) run, not a standard ordered apply:
+--   1. CROSS-DB: reads the v1.x CRM investor records from the old CRM v1.x database.
+--      UPDATE 2026-06-06 (Petra-C, per Knox): Knox is no longer using the old CRM v1.x
+--      investor DB — it is now a FROZEN source and he just wants the data preserved into
+--      the new DB. So this is a ONE-TIME OFFLINE COPY from a frozen source (pg_dump+load
+--      into a temp table on shared-prod), NOT an attended live ceremony. Strata runs it
+--      (verifies the frozen source still physically exists + V102 applied on destination).
+--      Relations FS v0.2 §8.1 Phase 2 amended to record this disposition.
+--   2. PRECONDITION — RESOLVED 2026-06-06: reads from relations.activity, which now exists.
+--      V100.1_relations_activity_base.sql landed on shared-prod 2026-06-03 (Strata-confirmed
+--      Stage-3 clean apply). The earlier "not yet created / migration not authored" note is
+--      cleared. No further precondition outstanding on relations.activity.
 --
 -- Strata's apply runner skips _DEFERRED files (same pattern as V101.2_DEFERRED).
 -- Strata confirmed this at pre-flight 2026-06-03.
